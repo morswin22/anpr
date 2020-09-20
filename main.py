@@ -3,32 +3,38 @@ import cv2 as cv
 import numpy as np
 import string
 from PIL import ImageFont, ImageDraw, Image
-from random import uniform, random, choices
+from random import uniform, random, choices, choice
+import json
 
 padding = 50
-width = 250
-height = 100
+width = 520
+height = 114
 angle = 40
-letters = 5
+letters = 7
+aside = 45
 
 font_size = 1
 
 font = ImageFont.truetype('polish.ttf', font_size)
-while font.getsize('W'*letters)[0] < width:
+while font.getsize(' '+'E'*letters)[0] < width - aside:
   font_size += 1
   font = ImageFont.truetype('polish.ttf', font_size)
 
-text_offset = (height - font.getsize('A')[1]) / 2
+text_offset = -5 + (height - font.getsize('A')[1]) / 2
+
+with open('numbers.json', 'r') as file:
+  numbers = json.load(file)
 
 while True:
-  text = ''.join(choices(string.ascii_uppercase + string.digits, k=letters))
+  county = choice(numbers['counties'])
+  text = county + ' ' + ''.join(choices(string.ascii_uppercase + string.digits, k=letters-len(county)))
 
   src = np.zeros(shape=[height + 2*padding, width + 2*padding, 3], dtype=np.uint8)
 
   src_pil = Image.fromarray(src)
   draw = ImageDraw.Draw(src_pil)
   draw.rectangle([(padding, padding), (width+padding, height+padding)], fill=(255,255,255))
-  draw.text((padding, padding + text_offset), text, font=font, fill=(0, 0, 0, 0))
+  draw.text((padding + aside, padding + text_offset), text, font=font, fill=(0, 0, 0, 0))
   src = np.array(src_pil)
 
   srcTri = np.array( [[0, 0], 
