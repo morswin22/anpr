@@ -25,9 +25,13 @@ text_offset = -5 + (height - font.getsize('A')[1]) / 2
 with open('numbers.json', 'r') as file:
   numbers = json.load(file)
 
+uppercase = string.ascii_uppercase
+for letter in numbers['removed']: 
+  uppercase = uppercase.replace(letter, '') 
+
 while True:
   county = choice(numbers['counties'])
-  text = county + ' ' + ''.join(choices(string.ascii_uppercase + string.digits, k=letters-len(county)))
+  text = county + ' ' + ''.join(choices(uppercase + string.digits, k=letters-len(county)))
 
   src = np.zeros(shape=[height + 2*padding, width + 2*padding, 3], dtype=np.uint8)
 
