@@ -8,6 +8,20 @@ import numpy as np
 import tensorflow_datasets as tfds
 from PIL import Image, ImageDraw, ImageFont
 
+def sp_noise(image, prob):
+  output = np.zeros(image.shape, np.uint8)
+  thres = 1 - prob 
+  for i in range(image.shape[0]):
+    for j in range(image.shape[1]):
+      rdn = random()
+      if rdn < prob:
+        output[i][j] = 0
+      elif rdn > thres:
+        output[i][j] = 255
+      else:
+        output[i][j] = image[i][j]
+  return output
+
 save_path = 'generated'
 generate = 1000
 
@@ -15,7 +29,7 @@ padding = 70, 120
 delta = 50
 width = 520
 height = 114
-angle = 35
+angle = 30
 # TODO Add varying number of letters
 letters = 7
 aside = 45
@@ -43,8 +57,8 @@ while font.getsize(' '+'E'*letters)[0] < width - aside:
   font = ImageFont.truetype('polish.ttf', font_size)
 text_offset = -5 + (height - font.getsize('A')[1]) / 2
 
-path = save_path + '/gen_'
-for i, example in enumerate(ds.take(generate)):
+path = save_path + '/'
+for example in ds.take(generate):
   background = example['image']
 
   county = choice(numbers['counties'])
@@ -72,11 +86,21 @@ for i, example in enumerate(ds.take(generate)):
   rot_mat = cv.getRotationMatrix2D( (warp_dst.shape[1]//2, warp_dst.shape[0]//2), uniform(-angle, angle), 1 )
   transformed = cv.warpAffine(warp_dst, rot_mat, (warp_dst.shape[1], warp_dst.shape[0]))
 
+  xy = np.where(transformed==transformed.max())
+  y = xy[0][0], xy[0][len(xy[0])-1]
+  x = xy[1][0], xy[1][len(xy[0])-1]
+  w = x[1] - x[0]
+  h = y[1] - y[0]
+  is_plate = '0' if 0.6 <= w / transformed.shape[1] <= 0.8 or .6 <= h / transformed.shape[0] <= .875 or y[0] == 0 or y[1] == transformed.shape[0] -1 or x[0] == 0 or x[1] == transformed.shape[1] - 1 else '1'
+
   transformed_pil = Image.fromarray(transformed)
   ratio = background.shape[1] / background.shape[0]
   bg_pil = Image.fromarray(np.array(background[...,::-1])).resize((transformed.shape[1], int(transformed.shape[1] / min(ratio, 2))))
   bg_pil.paste(transformed_pil, box=(0,0), mask=transformed_pil)
   bg = np.array(bg_pil.crop(box=(0, 0, transformed.shape[1], transformed.shape[1] // 2)).resize(final_size))
 
-  # TODO Create and store CNN training output
-  cv.imwrite(path + str(i) + '.png', bg)
+  grayscale = cv.cvtColor(sp_noise(bg, 0.02), cv.COLOR_BGR2GRAY)
+  cv.imwrite(path + is_plate + text + ' ' + '.png', grayscale)
+  # cv.imshow('gray', transformed)
+  # if cv.waitKey() == 27:
+  #   break
