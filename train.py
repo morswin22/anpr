@@ -1,14 +1,15 @@
 import json
 import os
 import re
-import shutil
-from subprocess import Popen
+from datetime import datetime
 
 import matplotlib.pyplot as plt
 import numpy as np
 import tensorflow as tf
 from PIL import Image
+from sklearn.utils import shuffle
 from tensorflow.keras import layers, models
+from tqdm import tqdm
 
 with open('map.json', 'r') as file:
   mapped = json.load(file)
@@ -32,27 +33,25 @@ def map_output(output):
     offset += len(letters)
   return label
 
-generate_count = 30000
-generate_path = 'generated'
+dataset_path = 'generated'
 train_with = .85
 
-Popen(f'python generate.py -c {generate_count} -d {generate_path}').wait()
+dataset_files = list(os.scandir(dataset_path))
+dataset_length = len(dataset_files)
+split = int(dataset_length * train_with)
 
-split = int(generate_count * train_with)
 pattern = re.compile("\d+_(.+)\.png")
 ds_data = []
 ds_labels = []
-for path in os.scandir(generate_path):
+for path in tqdm(dataset_files, unit='example', total=dataset_length):
   result = pattern.search(path.name)
   label = map_label(result.group(1))
   ds_labels.append(label)
-  image = np.array(Image.open(os.path.join(generate_path, path.name)), dtype=np.uint8).reshape((128, 64, 1)) / 255
+  image = np.array(Image.open(os.path.join(dataset_path, path.name)), dtype=np.uint8).reshape((128, 64, 1)) / 255
   ds_data.append(image)
-ds = ((np.array(ds_data[:split]), np.array(ds_labels[:split])), (np.array(ds_data[split:]), np.array(ds_labels[split:])))
 
-# shutil.rmtree('generated')
-
-(train_images, train_labels), (test_images, test_labels) = ds 
+shuffle(ds_data, ds_labels)
+(train_images, train_labels), (test_images, test_labels) = ((np.array(ds_data[:split]), np.array(ds_labels[:split])), (np.array(ds_data[split:]), np.array(ds_labels[split:]))) 
 
 model = models.Sequential()
 model.add(layers.Conv2D(48, (5, 5), activation='relu', input_shape=(128, 64, 1)))
@@ -71,20 +70,24 @@ model.compile(optimizer='adam', loss=tf.keras.losses.BinaryCrossentropy(), metri
 
 history = model.fit(train_images, train_labels, epochs=50, validation_data=(test_images, test_labels))
 
-plt.plot(history.history['binary_crossentropy'], label='accuracy')
-plt.plot(history.history['val_binary_crossentropy'], label='val_accuracy')
+plt.plot(history.history['loss'], label='loss')
+plt.plot(history.history['binary_crossentropy'], label='binary_crossentropy')
+plt.plot(history.history['val_binary_crossentropy'], label='val_binary_crossentropy')
 plt.xlabel('Epoch')
 plt.ylabel('Accuracy')
-plt.ylim([0.1, 1])
+plt.ylim([0, 1])
 plt.legend(loc='lower right')
 
-plt.show()
-
 test_loss, test_acc = model.evaluate(test_images, test_labels, verbose=2)
+print(1 - test_acc)
 
-print(test_acc)
+os.makedirs('models', exist_ok=True)
+name = f'models/{str(datetime.now())} model.h5'.replace(':','-').replace(' ','_')
+model.save(name)
 
 image = np.array(Image.open('test.png'), dtype=np.uint8).reshape((128, 64, 1)) / 255
 predictions = model.predict(np.array([image]))
 print('Ground truth: 1WE 295GC')
 print(f'Prediction: {map_output(predictions[0])}')
+
+plt.show()
