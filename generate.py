@@ -8,7 +8,12 @@ import cv2 as cv
 import numpy as np
 import tensorflow_datasets as tfds
 from PIL import Image, ImageDraw, ImageFont
+from tqdm import tqdm
 
+parser = argparse.ArgumentParser(description='Generate dataset for ANPR CNN')
+parser.add_argument('-c', '--count', dest='count', action='store', default=30000, help='number of images for generate')
+parser.add_argument('-p', '--part', dest='part', action='store', default="1", help='index of SUN397 part')
+parser.add_argument('-d', '--dir', dest='dir', action='store', default='generated-{part}-{count}', help='directory pattern for storing the output')
 
 def sp_noise(image, prob):
   output = np.zeros(image.shape, np.uint8)
@@ -24,13 +29,11 @@ def sp_noise(image, prob):
         output[i][j] = image[i][j]
   return output
 
-parser = argparse.ArgumentParser(description='Generate dataset for ANPR CNN')
-parser.add_argument('-c', '--count', dest='count', action='store', default=1000, help='number of images for generate')
-parser.add_argument('-d', '--dir', dest='dir', action='store', default='generated', help='directory name for storing the output')
 arguments = parser.parse_args()
 
-save_path = arguments.dir
-generate = int(arguments.count)
+part = str(max(min(int(arguments.part), 10), 1))
+generate = min(int(arguments.count), 39700)
+save_path = arguments.dir.replace('{part}', part).replace('{count}', str(generate))
 
 padding = 70, 120
 delta = 50
@@ -49,7 +52,7 @@ if os.path.exists(save_path):
 
 os.makedirs(save_path)
 
-ds = tfds.load("sun397/standard-part1-120k", split='train+test', shuffle_files=True)
+ds = tfds.load(f"sun397/standard-part{part}-120k", split='train+test', shuffle_files=True, data_dir="D:\\tensorflow_datasets")
 
 with open('numbers.json', 'r') as file:
   numbers = json.load(file)
@@ -66,7 +69,7 @@ while font.getsize(' '+'E'*letters)[0] < width - aside:
 text_offset = -5 + (height - font.getsize('A')[1]) / 2
 
 path = save_path + '/'
-for i, example in enumerate(ds.take(generate)):
+for i, example in tqdm(enumerate(ds.take(generate)), unit="example", total=generate):
   background = example['image']
 
   if random() > no_plate:
