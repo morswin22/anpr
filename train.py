@@ -14,7 +14,7 @@ from tqdm import tqdm
 with open('map.json', 'r') as file:
   mapped = json.load(file)
 
-def map_label(label):
+def encoder(label):
   result = np.zeros((202))
   if label != '0_no_text':
     offset = 0
@@ -24,10 +24,10 @@ def map_label(label):
       offset += len(mapped[i])
   return result
 
-def map_output(output):
-  label = ''
-  offset = 0
-  for letters in mapped:
+def decoder(output):
+  label = '0' if output[0] < 0.5 else '1'
+  offset = 1
+  for letters in mapped[1:]:
     index = np.argmax(output[offset:offset+len(letters)])
     label += letters[index]
     offset += len(letters)
@@ -45,7 +45,7 @@ ds_data = []
 ds_labels = []
 for path in tqdm(dataset_files, unit='example', total=dataset_length):
   result = pattern.search(path.name)
-  label = map_label(result.group(1))
+  label = encoder(result.group(1))
   ds_labels.append(label)
   image = np.array(Image.open(os.path.join(dataset_path, path.name)), dtype=np.uint8).reshape((128, 64, 1)) / 255
   ds_data.append(image)
@@ -88,6 +88,6 @@ model.save(name)
 image = np.array(Image.open('test.png'), dtype=np.uint8).reshape((128, 64, 1)) / 255
 predictions = model.predict(np.array([image]))
 print('Ground truth: 1WE 295GC')
-print(f'Prediction: {map_output(predictions[0])}')
+print(f'Prediction: {decoder(predictions[0])}')
 
 plt.show()
