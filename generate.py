@@ -54,7 +54,7 @@ os.makedirs(save_path)
 
 ds = tfds.load(f"sun397/standard-part{part}-120k", split='train+test', shuffle_files=True, data_dir="D:\\tensorflow_datasets")
 
-with open('numbers.json', 'r') as file:
+with open('assets/numbers.json', 'r') as file:
   numbers = json.load(file)
 
 uppercase = string.ascii_uppercase
@@ -62,10 +62,10 @@ for letter in numbers['removed']:
   uppercase = uppercase.replace(letter, '') 
 
 font_size = 1
-font = ImageFont.truetype('polish.ttf', font_size)
+font = ImageFont.truetype('assets/polish.ttf', font_size)
 while font.getsize(' '+'E'*letters)[0] < width - aside:
   font_size += 1
-  font = ImageFont.truetype('polish.ttf', font_size)
+  font = ImageFont.truetype('assets/polish.ttf', font_size)
 text_offset = -5 + (height - font.getsize('A')[1]) / 2
 
 path = save_path + '/'

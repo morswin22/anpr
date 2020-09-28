@@ -11,7 +11,7 @@ from sklearn.utils import shuffle
 from tensorflow.keras import layers, models
 from tqdm import tqdm
 
-with open('map.json', 'r') as file:
+with open('assets/map.json', 'r') as file:
   mapped = json.load(file)
 
 def encoder(label):
@@ -76,7 +76,7 @@ plt.plot(history.history['val_binary_crossentropy'], label='val_binary_crossentr
 plt.xlabel('Epoch')
 plt.ylabel('Accuracy')
 plt.ylim([0, 1])
-plt.legend(loc='lower right')
+plt.legend(loc='top left')
 
 test_loss, test_acc = model.evaluate(test_images, test_labels, verbose=2)
 print(1 - test_acc)
@@ -85,7 +85,7 @@ os.makedirs('models', exist_ok=True)
 name = f'models/{str(datetime.now())} model.h5'.replace(':','-').replace(' ','_')
 model.save(name)
 
-image = np.array(Image.open('test.png'), dtype=np.uint8).reshape((128, 64, 1)) / 255
+image = np.array(Image.open('assets/test.png'), dtype=np.uint8).reshape((128, 64, 1)) / 255
 predictions = model.predict(np.array([image]))
 print('Ground truth: 1WE 295GC')
 print(f'Prediction: {decoder(predictions[0])}')
