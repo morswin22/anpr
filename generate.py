@@ -1,5 +1,6 @@
 import argparse
 import json
+import math
 import os
 import shutil
 import string
@@ -26,15 +27,8 @@ parser.add_argument('-a', '--all', dest='all', action='store_true', help='flag t
 MAX_IN_PART = 39700
 MAX_IN_SET = MAX_IN_PART * 10
 MIN_PART, MAX_PART = 1, 10
-padding = 70, 120
-delta = 50
-width = 520
-height = 114
-angle = 12
-no_plate = 0.02
-# TODO Add varying number of letters
-letters = 7
-aside = 45
+width = 200
+aside = int(0.088 * width)
 final_size = 128, 64
 
 arguments = parser.parse_args()
@@ -61,72 +55,135 @@ if os.path.exists(save_path):
     exit()
 os.makedirs(save_path)
 
-with open('assets/numbers.json', 'r') as file:
-  numbers = json.load(file)
+with open('assets/map.json', 'r') as file:
+  mapped = json.load(file)
 
-uppercase = string.ascii_uppercase
-for letter in numbers['removed']: 
-  uppercase = uppercase.replace(letter, '') 
-
+font_sizes = {8: None, 7: None, 6: None}
 font_size = 1
-font = ImageFont.truetype('assets/polish.ttf', font_size)
-while font.getsize(' '+'E'*letters)[0] < width - aside:
-  font_size += 1
+for letters in font_sizes:
   font = ImageFont.truetype('assets/polish.ttf', font_size)
-text_offset = -5 + (height - font.getsize('A')[1]) / 2
+  example = ' ' + 'E'*letters
+  while font.getsize(example)[0] < width - aside:
+    font_size += 1
+    font = ImageFont.truetype('assets/polish.ttf', font_size)
+  text_width, font_height = font.getsize(example)
+  font_sizes[letters] = font, font_height, text_width
+
+text_probability = 0.4
+text_probabilities = [text_probability] + [(1-text_probability)/15] * 15, [text_probability] + [(1-text_probability)/30] * 30
+
+def euler_to_mat(yaw, pitch, roll):
+  # Rotate clockwise about the Y-axis
+  c, s = math.cos(yaw), math.sin(yaw)
+  M = np.matrix([[ c, 0., s], [ 0., 1., 0.], [ -s, 0., c]])
+
+  # Rotate clockwise about the X-axis
+  c, s = math.cos(pitch), math.sin(pitch)
+  M = np.matrix([[ 1., 0., 0.], [ 0., c, -s], [ 0., s, c]]) * M
+
+  # Rotate clockwise about the Z-axis
+  c, s = math.cos(roll), math.sin(roll)
+  M = np.matrix([[ c, -s, 0.], [ s, c, 0.], [ 0., 0., 1.]]) * M
+
+  return M
 
 def generate(part, count):
   ds = tfds.load(f"sun397/standard-part{part}-120k", split='train+test', shuffle_files=True, data_dir=arguments.set)
 
   path = save_path + '/' + str(part) + str(count)
-  for i, example in tqdm(enumerate(ds.take(count)), unit="example", total=count):
-    background = example['image']
+  for i, example in tqdm(enumerate(ds.take(count)), unit="examples", total=count):
+    # Extract background
+    background = np.array(example['image'][...,::-1], np.uint8)
 
-    if random() > no_plate:
-      county = choice(numbers['counties'])
-      text = county + (' ' if len(county) < 3 else '') + ''.join(choices(uppercase + string.digits, k=letters-len(county)))
+    # Generate text
+    county = ''.join([choice(chars) for chars in mapped[2][:-1]] + [np.random.choice(chars, p=text_probabilities[0]) for chars in mapped[2][-1:]])
+    vehicle = ''.join([choice(chars) for chars in mapped[3][:-1]] + [np.random.choice(chars, p=text_probabilities[1]) for chars in mapped[3][-1:]])
+    text = county.strip() + ' ' + vehicle.strip()
+    letters = len(text) - 1
+    font, font_height, text_width = font_sizes[letters]
 
-      src = np.zeros(shape=[height + 2*padding[1], width + 2*padding[0], 4], dtype=np.uint8)
+    h_padding = uniform(0.2, 0.4) * font_height
+    v_padding = uniform(0.1, 0.3) * font_height
+    radius = 1 + int(font_height * 0.1 * random())
+    out_shape = int(font_height + v_padding * 2), int(text_width + aside + h_padding * 2)
 
-      src_pil = Image.fromarray(src)
-      draw = ImageDraw.Draw(src_pil)
-      draw.rectangle([padding, (width+padding[0], height+padding[1])], fill=(255, 255, 255, 255))
-      draw.text((padding[0] + aside, padding[1] + text_offset), text, font=font, fill=(0, 0, 0, 255))
-      src = np.array(src_pil)
+    # Generate plate mask
+    plate_mask = np.ones([*out_shape, 3])
+    plate_mask[:radius, :radius] = [0.0] * 3
+    plate_mask[-radius:, :radius] = [0.0] * 3
+    plate_mask[:radius, -radius:] = [0.0] * 3
+    plate_mask[-radius:, -radius:] = [0.0] * 3
 
-      srcTri = np.array( [[0, 0], 
-                          [src.shape[1] - 1, 0], 
-                          [0, src.shape[0] - 1]] ).astype(np.float32)
+    cv.circle(plate_mask, (radius, radius), radius, [1.0] * 3, -1)
+    cv.circle(plate_mask, (radius, out_shape[0] - radius), radius, [1.0] * 3, -1)
+    cv.circle(plate_mask, (out_shape[1] - radius, radius), radius, [1.0] * 3, -1)
+    cv.circle(plate_mask, (out_shape[1] - radius, out_shape[0] - radius), radius, [1.0] * 3, -1)
 
-      dstTri = np.array( [[random()*delta, random()*delta],
-                          [src.shape[1]-random()*delta, random()*delta], 
-                          [random()*delta, src.shape[0]-random()*delta]] ).astype(np.float32)
+    # Pick colors
+    first = True
+    while first or plate_color - text_color < 0.3:
+        text_color = random()
+        plate_color = random()
+        if text_color > plate_color:
+            text_color, plate_color = plate_color, text_color
+        first = False
+    plate_color = tuple([int(plate_color * 255)] * 3)
+    text_color = tuple([int(text_color * 255)] * 3)
 
-      warp_mat = cv.getAffineTransform(srcTri, dstTri)
-      warp_dst = cv.warpAffine(src, warp_mat, (src.shape[1], src.shape[0]))
+    # Generate plate
+    text_pil = Image.fromarray(np.zeros([*out_shape, 3], dtype=np.uint8))
+    draw = ImageDraw.Draw(text_pil)
+    draw.rectangle(((0, 0), out_shape[::-1]), fill=plate_color)
+    draw.text((h_padding + aside, v_padding - 2), text, font=font, fill=text_color)
+    plate = np.array(text_pil)
 
-      rot_mat = cv.getRotationMatrix2D( (warp_dst.shape[1]//2, warp_dst.shape[0]//2), uniform(-angle, angle), 1 )
-      transformed = cv.warpAffine(warp_dst, rot_mat, (warp_dst.shape[1], warp_dst.shape[0]))
+    # Transform
+    out_of_bounds = False
+    from_size = np.array([[plate.shape[1], plate.shape[0]]]).T
+    to_size = np.array([[background.shape[1], background.shape[0]]]).T
 
-      xy = np.where(transformed==transformed.max())
-      y = xy[0][0], xy[0][len(xy[0])-1]
-      x = xy[1][0], xy[1][len(xy[0])-1]
-      w = x[1] - x[0]
-      h = y[1] - y[0]
-      is_plate = '0' if 0.6 <= w / transformed.shape[1] <= 0.8 or .6 <= h / transformed.shape[0] <= .875 or y[0] == 0 or y[1] == transformed.shape[0] -1 or x[0] == 0 or x[1] == transformed.shape[1] - 1 else '1'
+    scale_variation = 1.5
+    rotation_variation = 1.0
+    translation_variation = 1.2
 
-      transformed_pil = Image.fromarray(transformed)
-      ratio = background.shape[1] / background.shape[0]
-      bg_pil = Image.fromarray(np.array(background[...,::-1])).resize((transformed.shape[1], int(transformed.shape[1] / min(ratio, 2))))
-      bg_pil.paste(transformed_pil, box=(0,0), mask=transformed_pil)
-      bg = np.array(bg_pil.crop(box=(0, 0, transformed.shape[1], transformed.shape[1] // 2)).resize(final_size))
-    else:
-      bg = np.array(Image.fromarray(np.array(background)).resize(final_size))
-      text = '_no_text'
-      is_plate = '0'
+    min_scale, max_scale = 0.6, 0.875
+    scale = uniform((min_scale + max_scale) * 0.5 - (max_scale - min_scale) * 0.5 * scale_variation, (min_scale + max_scale) * 0.5 + (max_scale - min_scale) * 0.5 * scale_variation)
 
-    grayscale = cv.cvtColor(np.clip(bg + np.random.normal(0, 5, np.prod(bg.shape)).reshape(bg.shape), 0, 255).astype('uint8'), cv.COLOR_BGR2GRAY)
-    cv.imwrite(path + str(i) + '_' + is_plate + text + '.png', grayscale)
+    if scale > max_scale or scale < min_scale:
+      out_of_bounds = True
+    
+    roll = uniform(-0.3, 0.3) * rotation_variation
+    pitch = uniform(-0.2, 0.2) * rotation_variation
+    yaw = uniform(-1.2, 1.2) * rotation_variation
+
+    M = euler_to_mat(yaw, pitch, roll)[:2, :2]
+    h, w, d = plate.shape
+    corners = np.matrix([[-w, w, -w, w], [-h, -h, h, h]]) * 0.5
+    skewed_size = np.array(np.max(M * corners, axis=1) - np.min(M * corners, axis=1))
+
+    scale *= np.min(to_size / skewed_size)
+
+    trans = (np.random.random((2, 1)) - 0.5) * translation_variation
+    trans = ((2.0 * trans) ** 5.0) / 2.0
+    if np.any(trans < -0.5) or np.any(trans > 0.5):
+      out_of_bounds = True
+    trans = (to_size - skewed_size * scale) * trans
+
+    center_to = to_size / 2.0
+    center_from = from_size / 2.0
+
+    M *= scale
+    M = np.hstack([M, trans + center_to - M * center_from])
+
+    plate = cv.warpAffine(plate, M, (background.shape[1], background.shape[0]))
+    plate_mask = cv.warpAffine(plate_mask, M, (background.shape[1], background.shape[0]))
+
+    # Merge plate with background, turn grayscale and add noise
+    out = cv.cvtColor(cv.resize(np.array(plate * plate_mask + background * (1.0 - plate_mask), np.uint8), final_size), cv.COLOR_BGR2GRAY)
+    out = np.clip(out + np.random.normal(0, 13, out.shape), 0, 255).astype('uint8')
+
+    # Save
+    cv.imwrite(path + str(i) + '_' + str(int(not out_of_bounds)) + str(len(county.strip())) + str(len(vehicle.strip())) + text + '.png', out)
 
 if __name__ == "__main__":
   if parts is None:
