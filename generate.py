@@ -57,6 +57,8 @@ os.makedirs(save_path)
 
 with open('assets/map.json', 'r') as file:
   mapped = json.load(file)
+  county_chars = mapped[3:5], mapped[5:6]
+  vehicle_chars = mapped[6:10], mapped[10:11]
 
 font_sizes = {8: None, 7: None, 6: None}
 font_size = 1
@@ -96,8 +98,8 @@ def generate(part, count):
     background = np.array(example['image'][...,::-1], np.uint8)
 
     # Generate text
-    county = ''.join([choice(chars) for chars in mapped[2][:-1]] + [np.random.choice(chars, p=text_probabilities[0]) for chars in mapped[2][-1:]])
-    vehicle = ''.join([choice(chars) for chars in mapped[3][:-1]] + [np.random.choice(chars, p=text_probabilities[1]) for chars in mapped[3][-1:]])
+    county = ''.join([choice(chars) for chars in county_chars[0]] + [np.random.choice(chars, p=text_probabilities[0]) for chars in county_chars[1]])
+    vehicle = ''.join([choice(chars) for chars in vehicle_chars[0]] + [np.random.choice(chars, p=text_probabilities[1]) for chars in vehicle_chars[1]])
     text = county.strip() + ' ' + vehicle.strip()
     letters = len(text) - 1
     font, font_height, text_width = font_sizes[letters]
@@ -183,7 +185,7 @@ def generate(part, count):
     out = np.clip(out + np.random.normal(0, 13, out.shape), 0, 255).astype('uint8')
 
     # Save
-    cv.imwrite(path + str(i) + '_' + str(int(not out_of_bounds)) + str(len(county.strip())) + str(len(vehicle.strip())) + text + '.png', out)
+    cv.imwrite(path + str(i) + '_' + str(int(not out_of_bounds)) + str(len(county.strip())) + str(len(vehicle.strip())) + county + vehicle + '.png', out)
 
 if __name__ == "__main__":
   if parts is None:

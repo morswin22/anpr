@@ -12,7 +12,7 @@ from tensorflow.keras import models
 parser = argparse.ArgumentParser(description='Predict number-plate using the CNN model')
 parser.add_argument('-i', '--image', dest='image', action='store', default='assets/test.png', help='input image path')
 parser.add_argument('-m', '--model', dest='model', action='store', default='models/anpr-300k.h5', help='trained model path')
-parser.add_argument('-r', '--random', dest='random', action='store_const', const=True, default=False, help='use random examples from dataset')
+parser.add_argument('-r', '--random', dest='random', action='store', default=None, help='use random examples from given dataset')
 
 arguments = parser.parse_args()
 
@@ -23,16 +23,19 @@ if os.path.isfile(arguments.model):
     mapped = json.load(file)
 
   def decoder(output):
-    label = '0' if output[0] < 0.5 else '1'
-    offset = 1
-    for letters in mapped[1:]:
+    label = ''
+    offset = 0
+    for letters in mapped:
       index = np.argmax(output[offset:offset+len(letters)])
       label += letters[index]
       offset += len(letters)
     return label
 
   if arguments.random:
-    files = list(os.scandir('generated'))
+    if not os.path.isdir(arguments.random):
+      print(f'Dataset was not found at {arguments.random}')
+      exit()
+    files = list(os.scandir(arguments.random))
     pattern = re.compile("\d+_(.+)\.png")
 
     while True:

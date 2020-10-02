@@ -23,19 +23,17 @@ with open('assets/map.json', 'r') as file:
   mapped = json.load(file)
 
 def encoder(label):
-  result = np.zeros((202))
-  if label != '0_no_text':
-    offset = 0
-    for i, letter in enumerate(label):
-      if i != 0 or letter != '0':
-        result[offset + mapped[i].index(letter)] = 1
-      offset += len(mapped[i])
+  result = np.zeros((207))
+  offset = 0
+  for i, letter in enumerate(label):
+    result[offset + mapped[i].index(letter)] = 1
+    offset += len(mapped[i])
   return result
 
 def decoder(output):
-  label = '0' if output[0] < 0.5 else '1'
-  offset = 1
-  for letters in mapped[1:]:
+  label = ''
+  offset = 0
+  for letters in mapped:
     index = np.argmax(output[offset:offset+len(letters)])
     label += letters[index]
     offset += len(letters)
@@ -60,7 +58,7 @@ if arguments.model is None:
   model.add(layers.MaxPool2D((2, 2)))
   model.add(layers.Flatten())
   model.add(layers.Dense(2048, activation='relu'))
-  model.add(layers.Dense(202, activation='sigmoid'))
+  model.add(layers.Dense(207, activation='sigmoid'))
 else:
   model = models.load_model(arguments.model)
 model.summary()
