@@ -50,14 +50,28 @@ dataset_files = list(os.scandir(dataset_path))
 
 if arguments.model is None:
   model = models.Sequential()
-  model.add(layers.Conv2D(48, (5, 5), activation='relu', input_shape=(128, 64, 1)))
+
+  model.add(layers.Conv2D(32, (5, 5), activation='relu', input_shape=(128, 64, 1)))
+  model.add(layers.BatchNormalization())
   model.add(layers.MaxPool2D((2, 2)))
+  model.add(layers.Dropout(0.2))
+
   model.add(layers.Conv2D(64, (5, 5), activation='relu'))
+  model.add(layers.BatchNormalization())
   model.add(layers.MaxPool2D((1, 2)))
-  model.add(layers.Conv2D(128, (5, 5), activation='relu'))
+  model.add(layers.Dropout(0.2))
+
+  model.add(layers.Conv2D(64, (5, 5), activation='relu'))
+  model.add(layers.BatchNormalization())
   model.add(layers.MaxPool2D((2, 2)))
+  model.add(layers.Dropout(0.2))
+
   model.add(layers.Flatten())
-  model.add(layers.Dense(2048, activation='relu'))
+  model.add(layers.Dense(1024, activation='relu'))
+  model.add(layers.Dropout(0.3))
+  model.add(layers.Dense(512, activation='relu'))
+  model.add(layers.Dropout(0.3))
+
   model.add(layers.Dense(207, activation='sigmoid'))
 else:
   model = models.load_model(arguments.model)
@@ -83,7 +97,7 @@ for i in range(n_splits):
   shuffle(ds_data, ds_labels)
   (train_images, train_labels), (test_images, test_labels) = ((np.array(ds_data[:split]), np.array(ds_labels[:split])), (np.array(ds_data[split:]), np.array(ds_labels[split:])))
 
-  model.compile(optimizer='adam', loss=tf.keras.losses.BinaryCrossentropy(), metrics=['accuracy'])
+  model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
 
   result = model.fit(train_images, train_labels, epochs=n_epochs, validation_data=(test_images, test_labels))
   history['loss'] += result.history['loss']
@@ -111,7 +125,7 @@ model.save(name)
 
 image = np.array(Image.open('assets/test.png'), dtype=np.uint8).reshape((128, 64, 1)) / 255
 predictions = model.predict(np.array([image]))
-print('Ground truth: 1WE 295GC')
+print('Ground truth: 125WE 295GC')
 print(f'Prediction: {decoder(predictions[0])}')
 
 plt.show()
