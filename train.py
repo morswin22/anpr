@@ -3,12 +3,12 @@ import os
 import re
 from datetime import datetime
 import argparse
+from random import shuffle
 
 import matplotlib.pyplot as plt
 import numpy as np
 import tensorflow as tf
 from PIL import Image
-from sklearn.utils import shuffle
 from tensorflow.keras import layers, models
 from tqdm import tqdm
 
@@ -47,6 +47,7 @@ if not os.path.isdir(dataset_path):
   print(f'Dataset was not found at {dataset_path}')
   exit()
 dataset_files = list(os.scandir(dataset_path))
+shuffle(dataset_files)
 
 if arguments.model is None:
   model = models.Sequential()
@@ -77,9 +78,12 @@ else:
   model = models.load_model(arguments.model)
 model.summary()
 
+model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
+
 history = { 'loss': [], 'accuracy': [], 'val_accuracy': [], 'acc': [] }
 
-for i in range(n_splits):
+for i in tqdm(range(n_splits), total=n_splits, desc='Splits', unit='split'):
+  train_images, train_labels, test_images, test_labels = [None] * 4
   files = dataset_files[i::n_splits]
   dataset_length = len(files)
   split = int(dataset_length * train_with)
@@ -87,17 +91,14 @@ for i in range(n_splits):
   pattern = re.compile("\d+_(.+)\.png")
   ds_data = []
   ds_labels = []
-  for path in tqdm(files, unit='example', total=dataset_length):
+  for path in tqdm(files, unit='examples', total=dataset_length):
     result = pattern.search(path.name)
     label = encoder(result.group(1))
     ds_labels.append(label)
     image = np.array(Image.open(os.path.join(dataset_path, path.name)), dtype=np.uint8).reshape((128, 64, 1)) / 255
     ds_data.append(image)
 
-  shuffle(ds_data, ds_labels)
   (train_images, train_labels), (test_images, test_labels) = ((np.array(ds_data[:split]), np.array(ds_labels[:split])), (np.array(ds_data[split:]), np.array(ds_labels[split:])))
-
-  model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
 
   result = model.fit(train_images, train_labels, epochs=n_epochs, validation_data=(test_images, test_labels))
   history['loss'] += result.history['loss']
