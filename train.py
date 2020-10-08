@@ -1,5 +1,4 @@
 import argparse
-import json
 import os
 import pathlib
 import re
@@ -13,6 +12,8 @@ from PIL import Image
 from tensorflow.keras import callbacks, layers, models
 from tqdm import tqdm, trange
 
+from utils import decoder, encoder
+
 parser = argparse.ArgumentParser(description='Train the CNN model')
 parser.add_argument('-s', '--splits', dest='splits', action='store', default='1', help='number of splits')
 parser.add_argument('-e', '--epochs', dest='epochs', action='store', default='10', help='number of epochs')
@@ -20,26 +21,6 @@ parser.add_argument('-t', '--train', dest='train', action='store', default='0.8'
 parser.add_argument('-d', '--dir', dest='dir', action='store', default='generated-1-10-397000', help='dataset path')
 parser.add_argument('-m', '--model', dest='model', action='store', default=None, help='path of the model to use')
 parser.add_argument('-c', '--checkpoint', dest='checkpoint', action='store', default=None, help='path of the weights checkpoint to use')
-
-with open('assets/map.json', 'r') as file:
-  mapped = json.load(file)
-
-def encoder(label):
-  result = np.zeros((207))
-  offset = 0
-  for i, letter in enumerate(label):
-    result[offset + mapped[i].index(letter)] = 1
-    offset += len(mapped[i])
-  return result
-
-def decoder(output):
-  label = ''
-  offset = 0
-  for letters in mapped:
-    index = np.argmax(output[offset:offset+len(letters)])
-    label += letters[index]
-    offset += len(letters)
-  return label
 
 arguments = parser.parse_args()
 

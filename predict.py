@@ -1,5 +1,4 @@
 import argparse
-import json
 import os
 import re
 from random import choice
@@ -8,6 +7,8 @@ import cv2 as cv
 import numpy as np
 from PIL import Image, ImageOps
 from tensorflow.keras import models
+
+from utils import decoder
 
 parser = argparse.ArgumentParser(description='Predict number-plate using the CNN model')
 parser.add_argument('-i', '--image', dest='image', action='store', default='assets/test.png', help='input image path')
@@ -18,18 +19,6 @@ arguments = parser.parse_args()
 
 if os.path.isfile(arguments.model):
   model = models.load_model(arguments.model)
-
-  with open('assets/map.json', 'r') as file:
-    mapped = json.load(file)
-
-  def decoder(output):
-    label = ''
-    offset = 0
-    for letters in mapped:
-      index = np.argmax(output[offset:offset+len(letters)])
-      label += letters[index]
-      offset += len(letters)
-    return label
 
   if arguments.random:
     if not os.path.isdir(arguments.random):

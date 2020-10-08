@@ -2,3 +2,4 @@ generated*
 models
 logs
 checkpoints
+__pycache__
