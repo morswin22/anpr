@@ -13,10 +13,10 @@ from utils import decoder
 
 IMAGE_FORMATS = [("JPEG", "*.jpg"), ("PNG", "*.png")]
 SIZE = 512
-ZOOM_INC = 2**(1/2)
-MAX_ZOOM = 2**(3/2)
-SLIDE_STEP = 8
+ZOOM_MULT = 2 ** (1 / 2)
 FINAL_SHAPE = 128, 64, 1
+SLIDE_STEP = 8 / FINAL_SHAPE[0]
+RATIO = FINAL_SHAPE[0] / FINAL_SHAPE[1]
 MODEL_PATH = 'models/anpr.h5'
 
 class App:
@@ -36,7 +36,17 @@ class App:
       self.prediction_label = tk.Label(master, textvariable=self.prediction_text)
       self.prediction_label.pack()
 
-      self.load_button = tk.Button(master, text="Load image", command=self.predict)
+      self.load_button = tk.Button(master, text="Load image", command=self.load_image)
+      self.load_button.pack()
+
+      self.load_button = tk.Button(master, text="Rotate", command=self.rotate_image)
+      self.load_button.pack()
+
+      self.zoom_slider = tk.Scale(master, from_=1, to=10, orient=tk.HORIZONTAL)
+      self.zoom_slider.pack()
+      self.zoom_slider.set(5)
+
+      self.load_button = tk.Button(master, text="Predict", command=self.predict)
       self.load_button.pack()
 
   def load_model(self):
@@ -52,31 +62,52 @@ class App:
     path = askopenfilename(filetypes=IMAGE_FORMATS)
     self.image_text.set(os.path.split(path)[1])
     self.image = Image.open(path)
-    w, h = self.image.size
-    w, h = (SIZE, h * SIZE // w) if w > h else (w * SIZE // h, SIZE)
-    self.display_image = ImageTk.PhotoImage(self.image.resize((w, h), Image.ANTIALIAS))
+    self.display(self.image)
+
+  def rotate_image(self):
+    if not 'image' in self.__dict__:
+      return
+    self.image = self.image.rotate(-90, expand=True)
+    self.display(self.image)
+
+  def display(self, image):
+    w, h = image.size
+    self.display_w, self.display_h = (SIZE, h * SIZE // w) if w > h else (w * SIZE // h, SIZE)
+    self.display_image = ImageTk.PhotoImage(image.resize((self.display_w, self.display_h), Image.ANTIALIAS))
     self.image_label.configure(image=self.display_image)
-    return np.array(self.image.convert('L'), np.uint8), w, h
+    self.prediction_text.set('')
 
   def predict(self):
-    image, display_w, display_h = self.load_image()
-    h, w = image.shape
-    zoom = 1
+    if not 'image' in self.__dict__:
+      return
     cropped, bboxes, valid = [], [], []
+    image = np.array(self.image.convert('L'), np.uint8)
+    h, w = image.shape
+    if w / h < RATIO:
+      width = w
+      height = width / RATIO
+    else:
+      height = h
+      width = height * RATIO
+    width, height = int(width), int(height)
   
-    while zoom <= MAX_ZOOM:
-      width, height = int(w * zoom), int(h * zoom)
-      overflow_x, overflow_y = width - w, height - h
-      coeff = w / width
+    zoom = 1
+    m_zoom = 2 ** (self.zoom_slider.get() / 2)
+    while zoom <= m_zoom:
+      scaled_w, scaled_h = int(w * zoom), int(h * zoom)
+      
+      overflow_x, overflow_y = abs(width - scaled_w), abs(height - scaled_h)
+      coeff = w / scaled_w
 
-      scaled = cv.resize(image, (width, height))
+      scaled = cv.resize(image, (scaled_w, scaled_h))
 
-      for i in range(0, int(overflow_x) + SLIDE_STEP, SLIDE_STEP):
-        for j in range(0, int(overflow_y) + SLIDE_STEP, SLIDE_STEP):
-          bboxes.append(((int(i*coeff), int(j*coeff)), (int(i*coeff + w*coeff), int(j*coeff + h*coeff))))
-          cropped.append(cv.resize(scaled[j:j+h, i:i+w], FINAL_SHAPE[:-1]).reshape(FINAL_SHAPE))
+      step = int(SLIDE_STEP * scaled_w / 2)
+      for i in range(0, overflow_x + step, step):
+        for j in range(0, overflow_y + step, step):
+          bboxes.append(((int(i*coeff), int(j*coeff)), (int(i*coeff + width*coeff), int(j*coeff + height*coeff))))
+          cropped.append(cv.resize(scaled[j:j+height, i:i+width], FINAL_SHAPE[:-1]).reshape(FINAL_SHAPE) / 255)
 
-      zoom *= ZOOM_INC
+      zoom *= ZOOM_MULT
 
     predictions = self.model.predict(np.array(cropped))
 
@@ -85,10 +116,9 @@ class App:
       code = decoder(prediction)
       if code[:1] == '1':
         valid.append(code[3:])
-        img = cv.rectangle(img, *bboxes[i], (255, 255, 255))
+        img = cv.rectangle(img, *bboxes[i], (0, 255, 0), thickness=int(self.display_w*0.02))
 
-    self.display_image = ImageTk.PhotoImage(Image.fromarray(img).resize((display_w, display_h), Image.ANTIALIAS))
-    self.image_label.configure(image=self.display_image)
+    self.display(Image.fromarray(img))
     self.prediction_text.set('\n'.join(valid))
 
 root = tk.Tk()
