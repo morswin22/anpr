@@ -8,7 +8,7 @@ from random import shuffle
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageOps
 from tensorflow.keras import callbacks, layers, models
 from tqdm import tqdm, trange
 
@@ -100,7 +100,7 @@ for i in trange(n_splits, total=n_splits, desc='Splits', unit='split'):
 os.makedirs('models', exist_ok=True)
 model.save(f"models/{name}_model.h5")
 
-image = np.array(Image.open('assets/test.png'), dtype=np.uint8).reshape((128, 64, 1)) / 255
+image = np.array(ImageOps.grayscale(Image.open('assets/test.png').resize((128, 64))), dtype=np.uint8).reshape((128, 64, 1)) / 255
 predictions = model.predict(np.array([image]))
-print('Ground truth: 125WE 295GC')
+print('Ground truth: 125PO 5HG85')
 print(f'Prediction: {decoder(predictions[0])}')
