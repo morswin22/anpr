@@ -1,5 +1,6 @@
 import os
 import tkinter as tk
+from collections import Counter
 from tkinter.filedialog import askopenfilename
 
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
@@ -18,7 +19,15 @@ FINAL_SHAPE = 128, 64, 1
 SLIDE_STEP = 8 / FINAL_SHAPE[0]
 RATIO = FINAL_SHAPE[0] / FINAL_SHAPE[1]
 MODEL_PATH = 'models/anpr.h5'
-
+  
+def get_possible_label(current, next_chars, labels=[]):
+  if len(next_chars) > 0:
+    for char in next_chars[0]:
+      get_possible_label(current+char, next_chars[1:], labels)
+    return labels
+  else:
+    labels.append(current)
+    
 class App:
   def __init__(self, master):
     self.master = master
@@ -80,7 +89,7 @@ class App:
   def predict(self):
     if not 'image' in self.__dict__:
       return
-    cropped, bboxes, valid = [], [], []
+    cropped, bboxes, valid, valid_bboxes, groups, max_probs, labels = [], [], [], [], [], [], []
     image = np.array(self.image.convert('L'), np.uint8)
     h, w = image.shape
     if w / h < RATIO:
@@ -116,10 +125,66 @@ class App:
       code = decoder(prediction)
       if code[:1] == '1':
         valid.append(code[3:])
-        img = cv.rectangle(img, *bboxes[i], (0, 255, 0), thickness=int(self.display_w*0.02))
+        valid_bboxes.append(bboxes[i])
+        # img = cv.rectangle(img, *bboxes[i], (0, 255, 0), thickness=int(self.display_w*0.02))
+
+    for i, bbox0 in enumerate(valid_bboxes):
+      for j, bbox1 in enumerate(valid_bboxes[i+1:]):
+        are_overlapping = max(bbox0[0][0], bbox1[0][0]) < min(bbox0[1][0], bbox1[1][0]) and max(bbox0[0][1], bbox1[0][1]) < min(bbox0[1][1], bbox1[1][1])
+        if are_overlapping:
+          appended = False
+          for group in groups:
+            if i in group or j+i+1 in group:
+              if not i in group:
+                group.append(i)
+              if not j+i+1 in group:
+                group.append(j+i+1)
+              appended = True
+          if not appended:
+            groups.append([i, j+i+1])
+
+    for i, bbox in enumerate(valid_bboxes):
+      is_in_group = False
+      for group in groups:
+        if i in group:
+          is_in_group = True
+          break
+      if not is_in_group:
+        groups.append([i])
+
+    for group in groups:
+      top, bottom, left, right, length = 0, 0, 0, 0, len(group)
+      letters = [[], [], [], [], [], [], [], []]
+      for index in group:
+        left += valid_bboxes[index][0][0]
+        top += valid_bboxes[index][0][1]
+        right += valid_bboxes[index][1][0]
+        bottom += valid_bboxes[index][1][1]
+        for i, letter in enumerate(valid[index]):
+          letters[i].append(letter)
+
+      for letter in letters:
+        c = Counter(letter)
+        max_prob = c.most_common(1)[0][1]
+        with_max_prob = []
+        for pair in c.most_common():
+          if pair[1] == max_prob:
+            with_max_prob.append(pair[0])
+          elif pair[1] < max_prob:
+            break
+        max_probs.append(with_max_prob)
+      
+      possible = get_possible_label('', max_probs)
+      if len(possible) > length:
+        print('Unsure about group with labels: '+ ', '.join(possible))
+      else:
+        label = '/'.join(possible)
+        labels.append(label)
+        img = cv.putText(img, label, (left//length + int(self.display_w*0.1), top//length + int(self.display_w*0.3)), cv.FONT_HERSHEY_SIMPLEX, 4, (0, 255, 0), thickness=int(self.display_w*0.06))
+        img = cv.rectangle(img, (left//length, top//length), (right//length, bottom//length), (0, 255, 0), thickness=int(self.display_w*0.02))
 
     self.display(Image.fromarray(img))
-    self.prediction_text.set('\n'.join(valid))
+    self.prediction_text.set('\n'.join(labels))
 
 root = tk.Tk()
 App(root)
