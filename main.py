@@ -16,18 +16,18 @@ IMAGE_FORMATS = [("JPEG", "*.jpg"), ("PNG", "*.png")]
 SIZE = 512
 ZOOM_MULT = 2 ** (1 / 2)
 FINAL_SHAPE = 128, 64, 1
-SLIDE_STEP = 8 / FINAL_SHAPE[0]
+SLIDE_STEP = 1.5 / FINAL_SHAPE[0]
 RATIO = FINAL_SHAPE[0] / FINAL_SHAPE[1]
 MODEL_PATH = 'models/anpr.h5'
-  
-def get_possible_label(current, next_chars, labels=[]):
+
+def get_possible_label(current, next_chars, labels):
   if len(next_chars) > 0:
     for char in next_chars[0]:
       get_possible_label(current+char, next_chars[1:], labels)
     return labels
   else:
     labels.append(current)
-    
+
 class App:
   def __init__(self, master):
     self.master = master
@@ -51,7 +51,7 @@ class App:
       self.load_button = tk.Button(master, text="Rotate", command=self.rotate_image)
       self.load_button.pack()
 
-      self.zoom_slider = tk.Scale(master, from_=1, to=10, orient=tk.HORIZONTAL)
+      self.zoom_slider = tk.Scale(master, from_=1, to=9, orient=tk.HORIZONTAL)
       self.zoom_slider.pack()
       self.zoom_slider.set(5)
 
@@ -89,9 +89,10 @@ class App:
   def predict(self):
     if not 'image' in self.__dict__:
       return
-    cropped, bboxes, valid, valid_bboxes, groups, max_probs, labels = [], [], [], [], [], [], []
+    cropped, bboxes, valid, valid_bboxes, groups, labels = [], [], [], [], [], []
     image = np.array(self.image.convert('L'), np.uint8)
     h, w = image.shape
+    thickness = int(w*0.005)
     if w / h < RATIO:
       width = w
       height = width / RATIO
@@ -110,7 +111,7 @@ class App:
 
       scaled = cv.resize(image, (scaled_w, scaled_h))
 
-      step = int(SLIDE_STEP * scaled_w / 2)
+      step = int(SLIDE_STEP * scaled_w)
       for i in range(0, overflow_x + step, step):
         for j in range(0, overflow_y + step, step):
           bboxes.append(((int(i*coeff), int(j*coeff)), (int(i*coeff + width*coeff), int(j*coeff + height*coeff))))
@@ -126,7 +127,6 @@ class App:
       if code[:1] == '1':
         valid.append(code[3:])
         valid_bboxes.append(bboxes[i])
-        # img = cv.rectangle(img, *bboxes[i], (0, 255, 0), thickness=int(self.display_w*0.02))
 
     for i, bbox0 in enumerate(valid_bboxes):
       for j, bbox1 in enumerate(valid_bboxes[i+1:]):
@@ -154,7 +154,11 @@ class App:
 
     for group in groups:
       top, bottom, left, right, length = 0, 0, 0, 0, len(group)
-      letters = [[], [], [], [], [], [], [], []]
+      if length == 1:
+        print('Unsure about group with a weak match: ' + valid[group[0]])
+        continue
+
+      letters, max_probs = [[], [], [], [], [], [], [], []], []
       for index in group:
         left += valid_bboxes[index][0][0]
         top += valid_bboxes[index][0][1]
@@ -173,15 +177,28 @@ class App:
           elif pair[1] < max_prob:
             break
         max_probs.append(with_max_prob)
-      
-      possible = get_possible_label('', max_probs)
-      if len(possible) > length:
+
+      possible = get_possible_label('', max_probs, [])
+      if len(possible) >= length // 2:
         print('Unsure about group with labels: '+ ', '.join(possible))
+        img = cv.rectangle(img, (left//length, top//length), (right//length, bottom//length), (255, 0, 0), thickness=thickness//2)
       else:
         label = '/'.join(possible)
         labels.append(label)
-        img = cv.putText(img, label, (left//length + int(self.display_w*0.1), top//length + int(self.display_w*0.3)), cv.FONT_HERSHEY_SIMPLEX, 4, (0, 255, 0), thickness=int(self.display_w*0.06))
-        img = cv.rectangle(img, (left//length, top//length), (right//length, bottom//length), (0, 255, 0), thickness=int(self.display_w*0.02))
+        text_width = (right - left) // length
+        font_size = 1
+        is_too_long = False
+        for i in range(1,10):
+          size = cv.getTextSize(label, cv.FONT_HERSHEY_SIMPLEX, i, thickness=thickness)[0]
+          if size[0] < text_width:
+            font_size = i
+            text_height = size[1]
+          else:
+            is_too_long = i == 1
+            break
+
+        img = img if is_too_long else cv.putText(img, label, (left//length + thickness, top//length + text_height + thickness), cv.FONT_HERSHEY_SIMPLEX, font_size, (0, 255, 0), thickness=thickness)
+        img = cv.rectangle(img, (left//length, top//length), (right//length, bottom//length), (0, 255, 0), thickness=thickness)
 
     self.display(Image.fromarray(img))
     self.prediction_text.set('\n'.join(labels))
